@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Linger — Live Camera Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Working prototype of Linger, a disposable-camera photo app: shoot real photos with your camera, watch the roll develop, order twelve prints." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#0A0908; --shell:#0C0B0A; --surface:#131110; --surface-raised:#1A1815;
+    --hairline:#1C1A17; --border:#221F1B; --border-strong:#262320; --border-hover:#33302B;
+    --slot-dash:#262320; --slot-num:#3C3833;
+    --text:#EFE9E0; --paper:#F4EFE6; --text-on-paper:#0C0B0A;
+    --text-muted:#C9C0B4; --text-dim:#A09789; --text-dimmer:#8D857A; --text-faint:#7A7268;
+    --text-ghost:#6F675D; --text-ghostest:#5F584F;
+    --safelight:#D9482F; --print-caption:#7D746A;
+    --serif:'Instrument Serif',Georgia,serif;
+    --sans:'Archivo',-apple-system,BlinkMacSystemFont,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--canvas); color:var(--text); font-family:var(--sans);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+    padding:48px 20px 64px; gap:28px;
+  }
+  ::selection{ background:var(--safelight); color:var(--paper); }
+
+  .intro{ text-align:center; display:flex; flex-direction:column; gap:6px; max-width:420px; }
+  .intro .eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.18em; color:var(--safelight); text-transform:uppercase; }
+  .intro h1{ font-family:var(--serif); font-weight:400; font-size:34px; margin:0; line-height:1; color:var(--text); }
+  .intro p{ font-family:var(--sans); font-size:13.5px; line-height:1.55; color:var(--text-dimmer); margin:2px 0 0; }
+
+  .stage{ display:flex; flex-direction:column; align-items:center; gap:16px; }
+
+  #deviceWrap{ position:relative; }
+  #device{
+    width:393px; height:852px; position:relative; flex:none;
+    background:#151210; border-radius:50px; border:9px solid #221e19;
+    box-shadow:0 0 0 1px #332e26, 0 60px 100px -30px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  #notch{ position:absolute; top:9px; left:50%; transform:translateX(-50%); width:120px; height:32px; background:#151210; border-radius:18px; z-index:40; }
+  #screen{
+    position:absolute; inset:0; border-radius:41px; overflow:hidden;
+    background:var(--shell); font-family:var(--sans); color:var(--text);
+  }
+  #screen *{ -webkit-tap-highlight-color: transparent; }
+  #screen button{ font:inherit; color:inherit; background:none; border:none; padding:0; margin:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
+  #screen button:focus-visible, #screen [data-act]:focus-visible{ outline:2px solid var(--safelight); outline-offset:2px; }
+  #screen a{ color:inherit; }
+  .mono{ font-family:var(--mono); }
+  .serif{ font-family:var(--serif); font-weight:400; }
+  .uc{ text-transform:uppercase; }
+  .noscroll::-webkit-scrollbar{ display:none; }
+  .noscroll{ scrollbar-width:none; -ms-overflow-style:none; }
+
+  .statusbar{ display:flex; justify-content:space-between; align-items:center; padding:16px 30px 6px; font-family:var(--mono); font-size:12px; color:var(--text); flex:none; }
+  .statusbar .glyphs{ letter-spacing:.1em; color:var(--text-ghost); }
+
+  .tabbar{ flex:none; border-top:1px solid var(--hairline); display:flex; padding:12px 40px 10px; position:relative; }
+  .tabbar .item{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; position:relative; }
+  .tabbar .icon{ width:18px; height:14px; border-radius:2px; }
+  .tabbar .label{ font-family:var(--mono); font-size:9px; letter-spacing:.12em; }
+  .tabbar .badge{ position:absolute; top:-3px; left:calc(50% + 8px); min-width:16px; height:16px; border-radius:8px; background:var(--safelight); color:var(--shell); font-family:var(--mono); font-size:9.5px; display:grid; place-items:center; padding:0 4px; }
+  .home-indicator-row{ display:flex; justify-content:center; padding-bottom:8px; flex:none; }
+  .home-indicator{ width:132px; height:4px; border-radius:2px; background:#3a352f; }
+
+  #screen .paper-btn{ background:var(--paper); color:var(--text-on-paper); font-family:var(--mono); font-size:11px; letter-spacing:.14em; padding:16px 0; text-align:center; border-radius:2px; width:100%; transition:transform .12s ease, opacity .2s ease; }
+  #screen .paper-btn:active{ transform:scale(.98); }
+  #screen .paper-btn[disabled], #screen .paper-btn.disabled{ background:var(--surface-raised); border:1px solid var(--border-strong); color:var(--text-ghostest); }
+  #screen .ghost-link{ font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--text-ghost); background:none; text-align:center; min-height:44px; padding:14px 0; width:100%; }
+
+  .tile-photo{ width:100%; height:100%; background-size:cover; }
+  .locked-overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:rgba(8,7,6,.42); backdrop-filter:blur(.5px); }
+  .locked-overlay .cd{ font-family:var(--mono); font-size:9.5px; color:var(--safelight); letter-spacing:.06em; }
+
+  @keyframes bath{ 0%{opacity:.16;filter:blur(9px)} 100%{opacity:.55;filter:blur(3px)} }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes sheetUp{ from{ transform:translateY(100%); } to{ transform:translateY(0); } }
+  @keyframes surfaceIn{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:translateY(0); } }
+  @keyframes flashPulse{ 0%{opacity:.9} 100%{opacity:0} }
+  @keyframes pushIn{ from{ transform:translateX(100%); } to{ transform:translateX(0); } }
+  @keyframes popIn{ from{ transform:translateX(-100%); } to{ transform:translateX(0); } }
+  .anim-push{ animation: pushIn .32s cubic-bezier(.32,.72,0,1) both; }
+  .anim-pop{ animation: popIn .32s cubic-bezier(.32,.72,0,1) both; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+
+  .reset-link{ font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; color:var(--text-ghost); background:none; border:1px solid var(--border-strong); border-radius:20px; padding:8px 16px; cursor:pointer; transition:color .2s ease, border-color .2s ease; }
+  .reset-link:hover{ color:var(--safelight); border-color:var(--safelight); }
+  .reset-link:focus-visible{ outline:2px solid var(--safelight); outline-offset:2px; }
+
+  @media (max-width: 480px){
+    body{ padding:28px 12px 40px; }
+    .intro h1{ font-size:28px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <div class="eyebrow">Linger · live camera prototype</div>
+    <h1>The darkroom, mostly quiet</h1>
+    <p>This one uses your real camera. Shoot a roll, watch it develop, order twelve prints — your photos persist on this device even if you reload.</p>
+  </div>
+
+  <div class="stage">
+    <div id="deviceWrap">
+      <div id="device">
+        <div id="notch"></div>
+        <div id="screen" class="noscroll"></div>
+      </div>
+    </div>
+    <button class="reset-link" id="resetBtn" type="button">RESTART PROTOTYPE</button>
+  </div>
+
+<script>
+(function(){
+
+"use strict";
+
+/* ───────────────────────── helpers ───────────────────────── */
+function hash(str){
+  let h = 0;
+  for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+var DARK_TONES = [
+  ['#2a231c','#332b21'], ['#241f1a','#2c2620'], ['#2c2420','#362d27'],
+  ['#221e1f','#2a2426'], ['#26221a','#302b20'], ['#231f22','#2b262a'],
+  ['#2a2018','#342820'], ['#20211d','#282a24']
+];
+var PAPER_TONES = [
+  ['#cdbfa8','#dacdb6'], ['#c7b9a5','#d4c7b2'], ['#d0c0aa','#ddd0ba'],
+  ['#c2b6ad','#cfc3ba'], ['#c9c0a0','#d6ceac'], ['#bdb8b6','#cac5c2'],
+  ['#d3c2a6','#e0d0b3'], ['#b9bcae','#c6c9bb']
+];
+function tileBg(seedStr, onPaper){
+  var seed = hash(String(seedStr));
+  var arr = onPaper ? PAPER_TONES : DARK_TONES;
+  var pair = arr[seed % arr.length];
+  var angle = 106 + (seed % 3) * 8;
+  return 'repeating-linear-gradient(' + angle + 'deg,' + pair[0] + ' 0 7px,' + pair[1] + ' 7px 14px)';
+}
+// Real captured photo when one exists AND the caller says it's OK to reveal
+// it (i.e. this frame isn't still locked/undeveloped) — otherwise falls
+// back to the deterministic placeholder gradient, same as before capture
+// was wired up. Keeps the "you can't see it until it's ready" promise: a
+// locked frame never renders its real pixels, even blurred.
+function photoStyle(id, onPaper, useReal){
+  if (useReal && PHOTOS[id]) return "background-image:url('" + PHOTOS[id] + "');background-size:cover;background-position:center";
+  return 'background:' + tileBg(id, onPaper);
+}
+
+function fmtCountdown(ms){
+  var totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+  var h = Math.floor(totalMinutes / 60), m = totalMinutes % 60;
+  return h > 0 ? (h + 'h ' + m + 'm') : (m + 'm');
+}
+function fmtReadyBy(now, hoursFromNow){
+  var d = new Date(now + hoursFromNow * 3600 * 1000);
+  var day = d.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+  var time = d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  return day + ' · ' + time;
+}
+function todayLabel(){
+  return new Date(state.now).toLocaleDateString('en-US', { month:'short', day:'numeric' }).toUpperCase();
+}
+function fmtDateAbs(ms){
+  var d = new Date(ms);
+  var day = d.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+  var time = d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  return day + ' · ' + time;
+}
+function genPickupCode(){
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var c = '';
+  for (var i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return 'LN-' + c;
+}
+var SPELLED = ["Zero","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve"];
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+var MAX_SLOTS = 12;
+var PRICE_PER_PRINT = 15;
+var READY_HOURS = 48;
+var LOCATIONS = ["One Ayala", "Trinoma"];
+var ROLL_EXPOSURES = 27;
+var GUEST_OPTIONS = [5, 10, 20];
+
+/* ───────────────────────── initial state ───────────────────────── */
+function makeInitialState(){
+  var now = Date.now();
+  return {
+    now: now,
+    tab: 'camera',
+    cameraView: 'home', // home | full | gallery | single
+    rolls: [],
+    activeRollId: null,
+    galleryRollId: null,
+    singlePhotoId: null,
+    tray: [],
+    finish: 'matte',
+    ceremonyRollId: null,
+    shotFlash: false,
+    orderStep: null, // null | fulfillment | location | payment | processing | done
+    albumName: '',
+    pickupLocation: null,
+    payMethod: 'card',
+    orders: [],
+    recentPrints: [],
+    viewingOrderId: null,
+    processingProgress: 0,
+    processingDots: 0,
+    events: [],
+    startStep: null, // null | choose | roll-name | guests | end | develop | review
+    draftEvent: null,
+    draftRollName: '',
+    draftRollDelay: 24,
+    rosterEventId: null,
+    confirmAction: null // { kind:'pickup'|'remove-tray', id }
+  };
+}
+var state = makeInitialState();
+var tickTimer = null, processingTimer = null, processingDotTimer = null;
+
+/* ───────────────────────── real photo storage ─────────────────────────
+   Captured frames are stored as compressed JPEG data URLs, keyed by photo
+   id ("<rollId>-<frameIndex>"), in an in-memory cache backed by IndexedDB
+   (data URLs are too big/plentiful for localStorage's ~5-10MB quota once a
+   few rolls have been shot). App state itself (rolls, orders, tray...) is
+   small and JSON-serializable, so it persists separately via localStorage. */
+var PHOTOS = {};
+var STATE_KEY = 'linger-live-state-v1';
+var DB_NAME = 'linger-live-photos', DB_STORE = 'photos';
+var dbPromise = null;
+function getDb(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise(function(resolve){
+    if (!window.indexedDB){ resolve(null); return; }
+    var req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore(DB_STORE); };
+    req.onsuccess = function(){ resolve(req.result); };
+    req.onerror = function(){ resolve(null); };
+  });
+  return dbPromise;
+}
+function dbPut(id, dataUrl){
+  getDb().then(function(db){
+    if (!db) return;
+    try { db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(dataUrl, id); } catch(e){}
+  });
+}
+function dbGetAll(){
+  return getDb().then(function(db){
+    if (!db) return {};
+    return new Promise(function(resolve){
+      try {
+        var tx = db.transaction(DB_STORE, 'readonly');
+        var store = tx.objectStore(DB_STORE);
+        var keysReq = store.getAllKeys();
+        var valsReq = store.getAll();
+        tx.oncomplete = function(){
+          var out = {}, keys = keysReq.result || [], vals = valsReq.result || [];
+          for (var i=0;i<keys.length;i++) out[keys[i]] = vals[i];
+          resolve(out);
+        };
+        tx.onerror = function(){ resolve({}); };
+      } catch(e){ resolve({}); }
+    });
+  });
+}
+function dbClear(){
+  return getDb().then(function(db){
+    if (!db) return;
+    try { db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).clear(); } catch(e){}
+  });
+}
+function saveState(){
+  try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch(e){}
+}
+function loadState(){
+  try {
+    var raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    parsed.now = Date.now();
+    parsed.shotFlash = false;
+    return parsed;
+  } catch(e){ return null; }
+}
+
+/* ───────────────────────── camera capture ─────────────────────────
+   Live preview uses getUserMedia; if that's unavailable or denied (no
+   camera, insecure context, permission refused), the shutter falls back to
+   a native <input type=file capture> so the app still actually captures a
+   real photo everywhere. Every captured/selected frame gets cropped to the
+   app's 1:1.43 frame ratio and re-encoded at a fixed size, so storage stays
+   bounded regardless of the source camera's resolution. */
+var cameraStream = null, cameraVideoEl = null, cameraMode = 'none', cameraStarting = false; // cameraMode: none | live | file
+var OUT_W = 640, OUT_H = Math.round(640 * 1.43);
+function ensureVideoEl(){
+  if (cameraVideoEl) return cameraVideoEl;
+  cameraVideoEl = document.createElement('video');
+  cameraVideoEl.autoplay = true;
+  cameraVideoEl.playsInline = true;
+  cameraVideoEl.muted = true;
+  cameraVideoEl.setAttribute('aria-hidden', 'true');
+  cameraVideoEl.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;';
+  return cameraVideoEl;
+}
+function startCameraStream(){
+  if (cameraStarting || cameraStream) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ cameraMode = 'file'; render(); return; }
+  cameraStarting = true;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    .then(function(stream){
+      cameraStarting = false;
+      cameraStream = stream;
+      ensureVideoEl().srcObject = stream;
+      cameraMode = 'live';
+      render();
+    })
+    .catch(function(){
+      cameraStarting = false;
+      cameraMode = 'file';
+      render();
+    });
+}
+function stopCameraStream(){
+  if (cameraStream){ cameraStream.getTracks().forEach(function(t){ t.stop(); }); cameraStream = null; }
+  if (cameraVideoEl) cameraVideoEl.srcObject = null;
+  cameraMode = 'none';
+  cameraStarting = false;
+}
+window.addEventListener('beforeunload', stopCameraStream);
+
+function mediaSize(el){
+  if (el.videoWidth) return { w: el.videoWidth, h: el.videoHeight };
+  return { w: el.naturalWidth, h: el.naturalHeight };
+}
+function cropToJpeg(el){
+  var sz = mediaSize(el);
+  if (!sz.w || !sz.h) return null;
+  var targetRatio = OUT_W / OUT_H, srcRatio = sz.w / sz.h, sx, sy, sw, sh;
+  if (srcRatio > targetRatio){ sh = sz.h; sw = sh * targetRatio; sx = (sz.w - sw) / 2; sy = 0; }
+  else { sw = sz.w; sh = sw / targetRatio; sx = 0; sy = (sz.h - sh) / 2; }
+  var canvas = document.createElement('canvas');
+  canvas.width = OUT_W; canvas.height = OUT_H;
+  canvas.getContext('2d').drawImage(el, sx, sy, sw, sh, 0, 0, OUT_W, OUT_H);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+function handleFileCapture(e){
+  var file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var img = new Image();
+    img.onload = function(){ finishCapture(cropToJpeg(img)); };
+    img.onerror = function(){};
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function onShutterTap(){
+  var roll = activeRoll();
+  if (!roll || roll.status === 'full') return;
+  if (eventHasEnded(roll)) return;
+  if (cameraMode === 'live' && cameraStream){
+    finishCapture(cropToJpeg(cameraVideoEl));
+  } else {
+    var input = document.getElementById('cameraFileInput');
+    if (input) input.click();
+  }
+}
+function finishCapture(dataUrl){
+  var roll = activeRoll();
+  if (!roll || roll.status === 'full') return;
+  var photoId = roll.id + '-' + roll.shotCount;
+  if (dataUrl){ PHOTOS[photoId] = dataUrl; dbPut(photoId, dataUrl); }
+  state.shotFlash = true;
+  roll.shotCount += 1;
+  if (roll.shotCount >= roll.totalShots){
+    roll.status = 'full';
+    if (roll.kind !== 'event') roll.filledAtMs = Date.now();
+    state.ceremonyRollId = roll.id;
+    state.cameraView = 'home';
+    stopCameraStream();
+  }
+  render();
+  setTimeout(function(){ state.shotFlash = false; render(); }, 130);
+}
+
+function rollById(id){ for (var i=0;i<state.rolls.length;i++) if (state.rolls[i].id===id) return state.rolls[i]; return null; }
+function activeRoll(){ return rollById(state.activeRollId); }
+function eventById(id){ for (var i=0;i<state.events.length;i++) if (state.events[i].id===id) return state.events[i]; return null; }
+function eventHasEnded(roll){
+  if (roll.kind !== 'event') return false;
+  var ev = eventById(roll.eventId);
+  return !!ev && state.now >= ev.endAtMs;
+}
+function isGuestPlaceholder(roll){ return roll.kind === 'event' && !!roll.isGuestPlaceholder; }
+function rollDisplayName(r){
+  if (!r) return '—';
+  if (r.kind === 'event'){
+    var ev = eventById(r.eventId);
+    return (ev && ev.name && ev.name.trim()) ? ev.name.trim() : 'Untitled Event';
+  }
+  return (r.name && r.name.trim()) ? r.name.trim() : ('Roll ' + pad2(r.number));
+}
+
+function soloRevealDelayMs(roll){ return (roll.revealDelay || 24) * 3600 * 1000; }
+
+// Event rolls develop together on the event's schedule, independent of whether
+// any individual roll is full. Solo rolls now develop on THEIR OWN timer, which
+// only starts once the roll is actually filled (roll.filledAtMs) — finishing a
+// roll no longer unlocks it instantly, it just starts the clock. A solo roll
+// that hasn't been filled yet has no reveal time at all (returns null: "still
+// shooting, nothing to count down to").
+function msUntilReveal(roll){
+  if (roll.kind === 'event' && roll.eventId){
+    var ev = eventById(roll.eventId);
+    if (ev) return Math.max(0, ev.developAtMs - state.now);
+    return null;
+  }
+  if (roll.status !== 'full' || !roll.filledAtMs) return null;
+  return Math.max(0, roll.filledAtMs + soloRevealDelayMs(roll) - state.now);
+}
+function isRollLocked(roll){
+  if (roll.kind === 'event' && roll.eventId) return msUntilReveal(roll) > 0;
+  if (roll.status !== 'full') return true; // still shooting — nothing to develop yet
+  var ms = msUntilReveal(roll);
+  return ms === null || ms > 0;
+}
+
+function rollPhotos(roll){
+  var locked = isRollLocked(roll);
+  var revealInMs = locked ? msUntilReveal(roll) : 0;
+  var pending = roll.kind !== 'event' && locked && revealInMs === null; // still shooting, timer not started
+  var stage;
+  if (!locked){
+    stage = 'developed';
+  } else if (pending){
+    stage = 'latent';
+  } else {
+    var totalDelayMs = roll.kind === 'event' ? (24*3600*1000) : soloRevealDelayMs(roll);
+    var frac = totalDelayMs > 0 ? revealInMs / totalDelayMs : 0;
+    stage = frac < 0.12 ? 'emerging' : 'latent';
+  }
+  var out = [];
+  for (var i=0;i<roll.shotCount;i++){
+    out.push({
+      id: roll.id + '-' + i,
+      rollId: roll.id,
+      rollNumber: roll.number,
+      frameIndex: i,
+      time: roll.startedAt,
+      locked: locked,
+      revealInMs: revealInMs,
+      pending: pending,
+      stage: stage
+    });
+  }
+  return out;
+}
+function allPhotos(){
+  var rolls = state.rolls.slice().reverse();
+  var out = [];
+  rolls.forEach(function(r){ out = out.concat(rollPhotos(r)); });
+  return out;
+}
+function galleryPhotos(){
+  if (state.galleryRollId){
+    var r = rollById(state.galleryRollId);
+    return r ? rollPhotos(r) : [];
+  }
+  return allPhotos();
+}
+function findPhoto(id){
+  var all = allPhotos();
+  for (var i=0;i<all.length;i++) if (all[i].id===id) return all[i];
+  return null;
+}
+
+/* ───────────────────────── actions ───────────────────────── */
+function openFullCamera(){
+  state.cameraView = 'full';
+  render();
+  var roll = activeRoll();
+  var canShoot = !!roll && roll.status !== 'full' && !eventHasEnded(roll);
+  if (canShoot) startCameraStream(); else cameraMode = 'none';
+}
+function closeFullCamera(){ stopCameraStream(); state.cameraView = 'home'; render(); }
+
+/* ───────────────────────── start flow: new roll / new event ───────────────────────── */
+function openStartFlow(){
+  state.startStep = 'choose';
+  state.draftEvent = { name:'', guestCount:null, endDateStr:'', endAtMs:null, developMode:'after24' };
+  state.draftRollName = '';
+  state.draftRollDelay = 24;
+  render();
+}
+function closeStartFlow(){ state.startStep = null; render(); }
+function startFlowNext(step){ state.startStep = step; render(); }
+function startFlowBack(step){ state.startStep = step; render(); }
+
+function chooseStartKind(kind){
+  if (kind === 'roll'){ state.startStep = 'roll-name'; render(); return; }
+  state.startStep = 'guests';
+  render();
+}
+function createRollFromDraft(){
+  createSoloRoll(state.draftRollName, state.draftRollDelay);
+  state.startStep = null;
+  state.draftRollName = '';
+  state.draftRollDelay = 24;
+  render();
+}
+function setEventName(v){ state.draftEvent.name = v; }
+function pickGuestCount(n){ state.draftEvent.guestCount = n; render(); }
+function setEventEndDate(v){
+  state.draftEvent.endDateStr = v;
+  state.draftEvent.endAtMs = v ? new Date(v + 'T23:59:59').getTime() : null;
+  render();
+}
+function setDevelopMode(mode){ state.draftEvent.developMode = mode; render(); }
+function setDraftRollDelay(h){ state.draftRollDelay = h; render(); }
+// Only 24h/48h-after-end are offered, so this is always resolvable once an end date is set —
+// no custom date picker means there's no way to pick a develop time earlier than the event's own end.
+function draftDevelopReady(d){ return !!d.developMode; }
+function resolvedDevelopAtMs(d){
+  if (d.developMode === 'after48') return d.endAtMs + 48*3600*1000;
+  return d.endAtMs + 24*3600*1000;
+}
+
+// Guest placeholder rolls have their own numbering (matching their "Guest N"
+// label) and never touch this counter, so they can't cause the next visible
+// roll to skip ahead. Only rolls a user actually sees in the UI — solo rolls
+// and an organizer's own event roll — draw from it.
+function nextVisibleRollNumber(){
+  return state.rolls.filter(function(r){ return !isGuestPlaceholder(r); }).length + 1;
+}
+
+function createSoloRoll(name, delayHours){
+  var num = nextVisibleRollNumber();
+  var newRoll = { id:'r' + Date.now(), number:num, kind:'solo', eventId:null, name:(name||'').trim(), revealDelay: delayHours || 24, filledAtMs: null, totalShots:ROLL_EXPOSURES, shotCount:0, status:'active', startedAt:'Today', startedAtMs: Date.now() };
+  state.rolls.push(newRoll);
+  state.activeRollId = newRoll.id;
+}
+
+function createEvent(){
+  var d = state.draftEvent;
+  if (!d || !d.guestCount || !d.endAtMs || !draftDevelopReady(d)) return;
+  var developAtMs = resolvedDevelopAtMs(d);
+  var eventId = 'ev' + Date.now();
+  var event = { id:eventId, name:(d.name||'').trim(), guestCount:d.guestCount, endAtMs:d.endAtMs, developMode:d.developMode, developAtMs:developAtMs, createdAtMs: Date.now(), rollIds:[] };
+
+  var youRoll = { id:'r' + Date.now() + '-you', number:nextVisibleRollNumber(), kind:'event', eventId:eventId, label:'You', isGuestPlaceholder:false, totalShots:ROLL_EXPOSURES, shotCount:0, status:'active', startedAt:'Today', startedAtMs: Date.now() };
+  state.rolls.push(youRoll);
+  event.rollIds.push(youRoll.id);
+
+  for (var i = 1; i <= d.guestCount; i++){
+    // Guest rolls number themselves (1..guestCount, matching their "Guest N"
+    // label) instead of drawing from the shared visible-roll counter.
+    var guestRoll = { id:'r' + Date.now() + '-g' + i, number:i, kind:'event', eventId:eventId, label:'Guest ' + i, isGuestPlaceholder:true, totalShots:ROLL_EXPOSURES, shotCount:0, status:'active', startedAt:'Invited', startedAtMs: Date.now() };
+    state.rolls.push(guestRoll);
+    event.rollIds.push(guestRoll.id);
+  }
+
+  state.events.push(event);
+  state.activeRollId = youRoll.id;
+  state.startStep = null;
+  state.draftEvent = null;
+  render();
+}
+
+function openRoster(eventId){ state.rosterEventId = eventId; render(); }
+function closeRoster(){ state.rosterEventId = null; render(); }
+function rosterOpenYou(rollId){ state.rosterEventId = null; openRoll(rollId); }
+function openRoll(id){ state.galleryRollId = id; state.cameraView = 'gallery'; render(); }
+function switchRoll(id){ state.galleryRollId = id; render(); }
+function backToCameraHome(){ state.cameraView = 'home'; state.galleryRollId = null; render(); }
+
+function openSingle(id){ state.singlePhotoId = id; state.cameraView = 'single'; render(); }
+function backToGallery(){ state.cameraView = 'gallery'; render(); }
+
+// Second tap on an already-queued photo always un-queues it — same behavior
+// everywhere a print toggle appears (Gallery grid, Single Photo). Previously
+// the Gallery version jumped to Print Lab instead of un-queuing, which read
+// as a toggle but didn't behave like one.
+function togglePrint(id){
+  var photo = findPhoto(id);
+  if (!photo || photo.locked) return;
+  var idx = state.tray.indexOf(id);
+  if (idx >= 0){ state.tray.splice(idx, 1); render(); return; }
+  if (state.tray.length >= MAX_SLOTS) return;
+  state.tray.push(id);
+  render();
+}
+function removeFromTray(id){
+  var idx = state.tray.indexOf(id);
+  if (idx >= 0) state.tray.splice(idx, 1);
+  render();
+}
+
+// Confirm gate for the two genuinely destructive actions: marking an order
+// picked up (removes it from state for good — no undo in the prototype) and
+// removing a print from the tray via its dedicated delete control (the "x" on
+// a filled tray slot, and Single Photo's "Remove this frame" link once the
+// tray is full). The plain print-toggle checkmark is intentionally NOT gated
+// here — it's a lightweight, reversible, frequent-tap control, and asking for
+// confirmation on every toggle would break that affordance rather than
+// protect it.
+function requestConfirm(kind, id){ state.confirmAction = { kind: kind, id: id }; render(); }
+function cancelConfirm(){ state.confirmAction = null; render(); }
+function confirmActionDo(){
+  var a = state.confirmAction;
+  state.confirmAction = null;
+  if (!a) return;
+  if (a.kind === 'pickup') markPickedUp(a.id);
+  else if (a.kind === 'remove-tray') removeFromTray(a.id);
+}
+
+function dismissCeremony(){ state.ceremonyRollId = null; render(); }
+function openCeremonyRoll(){
+  var id = state.ceremonyRollId;
+  state.ceremonyRollId = null;
+  state.tab = 'camera';
+  openRoll(id);
+}
+
+function switchTab(t){ state.tab = t; render(); }
+function changeFinish(f){ state.finish = f; render(); }
+function goToGalleryFromTray(){ state.tab = 'camera'; state.cameraView = 'gallery'; state.galleryRollId = null; render(); }
+
+function startOrder(){
+  if (state.tray.length !== MAX_SLOTS) return;
+  state.orderStep = 'fulfillment'; render();
+}
+function closeOrderFlow(){ state.orderStep = null; render(); }
+function orderBack(step){ state.orderStep = step; render(); }
+function chooseFulfillment(method){
+  if (method !== 'pickup') return;
+  state.orderStep = 'location'; render();
+}
+function choosePickupLocation(loc){ state.pickupLocation = loc; state.orderStep = 'payment'; render(); }
+function changePayMethod(m){ state.payMethod = m; render(); }
+
+function confirmPayment(){
+  state.orderStep = 'processing';
+  state.processingProgress = 0;
+  state.processingDots = 0;
+  render();
+  processingTimer = setInterval(function(){
+    state.processingProgress = Math.min(state.processingProgress + Math.random()*14 + 6, 100);
+    render();
+  }, 220);
+  processingDotTimer = setInterval(function(){
+    state.processingDots = (state.processingDots + 1) % 4;
+    render();
+  }, 420);
+  setTimeout(function(){
+    clearInterval(processingTimer); clearInterval(processingDotTimer);
+    finalizeOrder();
+  }, 2200);
+}
+function finalizeOrder(){
+  var printed = state.tray.map(findPhoto).filter(Boolean);
+  state.recentPrints = printed.map(function(p){ return p.id; }).concat(state.recentPrints).slice(0, 6);
+  if (state.pickupLocation){
+    var placedAtMs = Date.now();
+    state.orders.push({
+      id: 'ord' + placedAtMs,
+      name: state.albumName.trim() || 'Untitled Album',
+      count: state.tray.length,
+      finish: state.finish,
+      location: state.pickupLocation,
+      placedAtMs: placedAtMs,
+      readyAtMs: placedAtMs + READY_HOURS*3600*1000,
+      pickupCode: genPickupCode(),
+      photos: printed
+    });
+  }
+  state.orderStep = 'done';
+  render();
+}
+function orderDone(){
+  state.tray = [];
+  state.orderStep = null;
+  state.pickupLocation = null;
+  state.albumName = '';
+  render();
+}
+function viewOrder(id){ state.viewingOrderId = id; render(); }
+function closeOrderPopup(){ state.viewingOrderId = null; render(); }
+function markPickedUp(id){
+  state.orders = state.orders.filter(function(o){ return o.id !== id; });
+  if (state.viewingOrderId === id) state.viewingOrderId = null;
+  render();
+}
+
+function orderById(id){ for (var i=0;i<state.orders.length;i++) if (state.orders[i].id===id) return state.orders[i]; return null; }
+
+function resetAll(){
+  clearInterval(processingTimer); clearInterval(processingDotTimer);
+  stopCameraStream();
+  state = makeInitialState();
+  lastRoute = null;
+  PHOTOS = {};
+  try { localStorage.removeItem(STATE_KEY); } catch(e){}
+  dbClear();
+  render();
+}
+
+/* ───────────────────────── icons ───────────────────────── */
+var ICONS = {
+  x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  chev: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  print: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+  lock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  camIcon: '<svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+  printTab: '<svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+  tabCamera: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5h2.4l1.3-2.2h10.6L18.6 8.5H21v10.2H3z"/><circle cx="12" cy="13.6" r="3.4"/><circle cx="18.1" cy="11.1" r=".6" fill="currentColor" stroke="none"/></svg>',
+  tabPrint: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.6h18v6.6h-3.4"/><path d="M6.4 17.2H3"/><path d="M6.4 10.6V4h11.2v6.6"/><rect x="6.4" y="14" width="11.2" height="6.6" rx=".6"/><path d="M9.3 17h5.4"/></svg>',
+  film: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>'
+};
+
+// A single L-shaped corner frameline for the viewfinder window, like the bright-line
+// framelines in an optical rangefinder marking the exact capture area.
+function viewfinderBracket(pos){
+  var edge = '1.5px solid rgba(244,239,230,.8)';
+  var box = 'position:absolute;width:15px;height:15px;';
+  var edges = {
+    tl: 'top:9px;left:9px;border-top:' + edge + ';border-left:' + edge + ';',
+    tr: 'top:9px;right:9px;border-top:' + edge + ';border-right:' + edge + ';',
+    bl: 'bottom:9px;left:9px;border-bottom:' + edge + ';border-left:' + edge + ';',
+    br: 'bottom:9px;right:9px;border-bottom:' + edge + ';border-right:' + edge + ';'
+  };
+  return '<div style="' + box + edges[pos] + '"></div>';
+}
+
+/* ───────────────────────── status bar / tab bar ───────────────────────── */
+function statusBar(){
+  return '<div class="statusbar"><span>9:41</span><span class="glyphs">▮▮▮ ▲ ▰</span></div>';
+}
+function tabBar(){
+  var count = state.tray.length;
+  return '' +
+    '<div class="tabbar">' +
+      '<button class="item" data-act="tab:camera" style="opacity:' + (state.tab==='camera'?1:.55) + '">' +
+        '<span style="display:grid;place-items:center;height:21px;color:' + (state.tab==='camera' ? '#F4EFE6' : '#6F675D') + '">' + ICONS.tabCamera + '</span>' +
+        '<span class="label mono" style="color:' + (state.tab==='camera' ? '#F4EFE6' : '#6F675D') + '">CAMERA</span>' +
+      '</button>' +
+      '<button class="item" data-act="tab:printlab" style="opacity:' + (state.tab==='printlab'?1:.55) + '">' +
+        '<span style="display:grid;place-items:center;height:21px;color:' + (state.tab==='printlab' ? '#F4EFE6' : '#6F675D') + '">' + ICONS.tabPrint + '</span>' +
+        (count>0 ? '<span class="badge">' + count + '</span>' : '') +
+        '<span class="label mono" style="color:' + (state.tab==='printlab' ? '#F4EFE6' : '#6F675D') + '">PRINT LAB</span>' +
+      '</button>' +
+    '</div>' +
+    '<div class="home-indicator-row"><div class="home-indicator"></div></div>';
+}
+
+/* ───────────────────────── camera home ───────────────────────── */
+function screenCameraHome(){
+  var roll = activeRoll();
+  var shotsUsed = roll ? roll.shotCount : 0;
+  var shotsLeft = roll ? roll.totalShots - shotsUsed : 0;
+  var rollFull = !roll || roll.status === 'full';
+
+  var eventEnded = roll ? eventHasEnded(roll) : false;
+  var rollLocked = roll ? isRollLocked(roll) : false;
+  var paneAct = (rollFull || eventEnded) ? 'open-start-flow' : 'open-full';
+  var paneInner;
+  if (rollFull || eventEnded){
+    var finishedLabel = eventEnded ? 'Event has ended' : (roll ? esc(rollDisplayName(roll)) + (rollLocked ? ' is in the bath' : ' finished') : '');
+    paneInner =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">' +
+        '<div style="display:flex;flex-direction:column;gap:3px">' +
+          (finishedLabel ? '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-dim)">' + finishedLabel + '</div>' : '') +
+          '<div class="serif" style="font-size:19px;color:var(--paper)">Start something new</div>' +
+        '</div>' +
+        '<div style="color:var(--text-dim)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></div>' +
+      '</div>';
+  } else {
+    var pct = Math.round((shotsUsed / roll.totalShots) * 100);
+    var revealMs = msUntilReveal(roll);
+    var revealText = roll.kind === 'event'
+      ? 'Develops in ' + fmtCountdown(revealMs)
+      : 'Develops ' + (roll.revealDelay || 24) + 'h after last shot';
+    paneInner =
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:8px">' +
+        '<div style="display:flex;flex-direction:column;gap:4px">' +
+          '<div class="serif" style="font-size:21px;line-height:1;color:var(--paper)">' + shotsLeft + ' shot' + (shotsLeft!==1?'s':'') + ' left</div>' +
+          '<div class="mono uc" style="font-size:10px;letter-spacing:.12em;color:var(--text-dim)">' + revealText + '</div>' +
+        '</div>' +
+        '<div style="width:42px;height:42px;border-radius:50%;border:1px solid rgba(239,233,224,.35);display:grid;place-items:center;flex:none">' +
+          '<div style="width:24px;height:24px;border-radius:50%;background:var(--paper)"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="height:3px;border-radius:2px;background:rgba(239,233,224,.14);overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:var(--safelight)"></div>' +
+      '</div>';
+  }
+
+  var visibleRolls = state.rolls.filter(function(r){ return !isGuestPlaceholder(r); });
+  var rollsHtml = visibleRolls.slice().reverse().map(function(r){
+    var locked = isRollLocked(r);
+    var isActive = r.status === 'active';
+    var isEvent = r.kind === 'event';
+    var ev = isEvent ? eventById(r.eventId) : null;
+    var thumbs = '';
+    for (var i=0;i<4;i++){
+      var has = i < r.shotCount;
+      thumbs += '<div style="aspect-ratio:1.43;border-radius:1px;overflow:hidden;' + (has ? photoStyle(r.id+'-'+i, false, !locked) : 'background:#141210') + (has && locked ? ';filter:blur(3px) saturate(.7);opacity:.6' : '') + '"></div>';
+    }
+    var badge = (isEvent && ev) ? '<div class="mono uc" style="font-size:8px;letter-spacing:.1em;color:var(--safelight);border:1px solid var(--safelight);border-radius:20px;padding:2px 7px;align-self:flex-start;margin-bottom:1px">EVENT · ' + ev.guestCount + ' GUESTS</div>' : '';
+    var metaLine = (isEvent && ev)
+      ? 'Develops ' + esc(fmtDateAbs(ev.developAtMs))
+      : esc(r.startedAt);
+    var rosterLink = (isEvent && ev) ? '<span data-act="open-roster:' + ev.id + '" role="button" tabindex="0" aria-label="Open event roster" class="mono uc" style="font-size:8.5px;letter-spacing:.08em;color:var(--text-dim);text-decoration:underline;align-self:flex-start;margin-top:2px">Roster →</span>' : '';
+    var pctFilled = Math.round((r.shotCount / r.totalShots) * 100);
+    var named = r.kind === 'event' || !!(r.name && r.name.trim());
+    var subLine = named ? ('Roll ' + pad2(r.number) + ' · ' + metaLine) : metaLine;
+    return '' +
+    '<button data-act="open-roll:' + r.id + '" style="display:grid;grid-template-columns:56% 1fr;gap:12px;width:100%;background:var(--surface);border:1px solid ' + (isActive ? 'var(--safelight)' : 'var(--border)') + ';border-radius:5px;padding:10px;text-align:left">' +
+      '<div style="position:relative;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">' +
+        thumbs +
+        (locked ? '<div class="locked-overlay" style="border-radius:1px">' + ICONS.lock + '<span class="cd mono">' + (msUntilReveal(r) === null ? 'SHOOTING' : fmtCountdown(msUntilReveal(r))) + '</span></div>' : '') +
+      '</div>' +
+      '<div style="min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:8px">' +
+        '<div style="display:flex;flex-direction:column;gap:4px">' +
+          badge +
+          '<div class="serif" style="font-size:19px;line-height:1.15;color:var(--text)">' + esc(rollDisplayName(r)) + '</div>' +
+          '<div class="mono uc" style="font-size:9px;letter-spacing:.12em;color:var(--text-faint)">' + subLine + '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            (isActive ? '<span style="width:5px;height:5px;border-radius:50%;background:var(--safelight);flex:none"></span>' : '') +
+            '<span class="mono uc" style="font-size:9.5px;letter-spacing:.1em;white-space:nowrap;color:' + (isActive ? 'var(--text-muted)' : 'var(--text-faint)') + '">' + r.shotCount + ' / ' + r.totalShots + ' frames</span>' +
+          '</div>' +
+          '<div style="height:2px;background:rgba(239,233,224,.09);overflow:hidden">' +
+            '<div style="height:100%;width:' + pctFilled + '%;background:' + (isActive ? 'var(--safelight)' : 'var(--text-ghostest)') + '"></div>' +
+          '</div>' +
+          rosterLink +
+        '</div>' +
+      '</div>' +
+    '</button>';
+  }).join('');
+
+  var activeShotsLeft = roll ? (roll.totalShots - roll.shotCount) : 0;
+  var footerNote = roll && roll.status === 'active' && !eventHasEnded(roll)
+    ? (activeShotsLeft + ' frame' + (activeShotsLeft!==1?'s':'') + ' left before ' + rollDisplayName(roll) + ' goes into the bath.')
+    : 'Nothing loaded. Start something new whenever you\'re ready.';
+
+  return '' +
+  '<div style="position:absolute;inset:0;display:flex;flex-direction:column">' +
+    statusBar() +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-end;padding:14px 22px 16px;flex:none">' +
+      '<div class="serif" style="font-size:30px;line-height:1;color:var(--text)">Linger</div>' +
+      '<div class="mono uc" style="font-size:10px;letter-spacing:.14em;color:var(--text-ghost)">' + esc(todayLabel()) + '</div>' +
+    '</div>' +
+    '<div style="flex:1;overflow-y:auto" class="noscroll">' +
+      '<button data-act="' + paneAct + '" style="display:block;position:relative;margin:0 16px;border-radius:6px;overflow:hidden;width:calc(100% - 32px);aspect-ratio:1.43;background:' + tileBg('viewfinder-home', false) + '">' +
+        '<div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.5) 100%)"></div>' +
+        '<div style="position:absolute;inset:auto 12px 12px;background:rgba(14,13,12,.62);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(239,233,224,.1);border-radius:4px;padding:14px 16px;text-align:left">' + paneInner + '</div>' +
+      '</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:26px 22px 12px">' +
+        '<div class="mono uc" style="font-size:10.5px;letter-spacing:.14em;color:var(--text-ghost)">Your Rolls · ' + visibleRolls.length + '</div>' +
+        '<button data-act="open-start-flow" class="mono uc" style="font-size:9.5px;letter-spacing:.12em;color:var(--safelight);display:flex;align-items:center;gap:4px">+ New</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;padding:0 16px">' + rollsHtml + '</div>' +
+      '<div style="margin-top:24px;padding:0 22px 24px;display:flex;flex-direction:column;gap:8px">' +
+        '<div style="height:1px;background:var(--hairline)"></div>' +
+        '<div class="serif" style="font-style:italic;font-size:15.5px;color:var(--text-ghost)">' + esc(footerNote) + '</div>' +
+      '</div>' +
+    '</div>' +
+    tabBar() +
+  '</div>';
+}
+
+/* ───────────────────────── full camera ───────────────────────── */
+function screenFullCamera(){
+  var roll = activeRoll();
+  var shotsUsed = roll ? roll.shotCount : 0;
+  var shotsLeft = roll ? roll.totalShots - shotsUsed : 0;
+  var rollFull = !roll || roll.status === 'full';
+  var eventEnded = roll ? eventHasEnded(roll) : false;
+  var canShoot = !!roll && !rollFull && !eventEnded;
+
+  var bottom;
+  if (canShoot){
+    var hintText = cameraMode === 'file' ? 'Tap the shutter to take a photo' : 'You won\'t see it until it\'s ready';
+    bottom =
+      '<button data-act="capture" aria-label="Take photo" style="width:78px;height:78px;border-radius:50%;border:1.5px solid rgba(244,239,230,.5);display:grid;place-items:center">' +
+        '<div style="width:60px;height:60px;border-radius:50%;background:var(--paper);box-shadow:inset 0 -1px 2px rgba(0,0,0,.25)"></div>' +
+      '</button>' +
+      '<div class="serif" style="font-style:italic;font-size:15.5px;white-space:nowrap;color:var(--text-dim)">' + hintText + '</div>' +
+      '<input id="cameraFileInput" type="file" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" aria-hidden="true" tabindex="-1" />';
+  } else {
+    var rollLocked = roll ? isRollLocked(roll) : false;
+    var finishedLabel = eventEnded ? 'This event has ended' : (rollFull && roll ? esc(rollDisplayName(roll)) + (rollLocked ? ' is in the bath' : ' finished') : '');
+    bottom =
+      (finishedLabel ? '<div class="mono uc" style="font-size:10px;letter-spacing:.14em;color:var(--text-dim)">' + finishedLabel + '</div>' : '') +
+      '<button data-act="open-start-flow" class="paper-btn" style="width:auto;padding:15px 30px;border-radius:24px">Start something new</button>';
+  }
+
+  // The eyepiece window: what the camera sees, cropped to the 1:1.43 frame ratio
+  // (portrait — rotated from the 1.43:1 print ratio so it fills more of a tall
+  // phone screen while shooting) and dressed up like an optical viewfinder
+  // (framelines, vignette, glass glare).
+  var brackets = ['tl','tr','bl','br'].map(viewfinderBracket).join('');
+  var windowHtml =
+    '<div style="position:relative;width:100%;max-width:400px">' +
+      '<div style="position:absolute;inset:-52px;border-radius:44%;background:radial-gradient(ellipse at center, rgba(58,48,38,.4), transparent 68%);pointer-events:none"></div>' +
+      '<div style="position:relative;width:100%;aspect-ratio:1/1.43;border-radius:3px;overflow:hidden;background:' + tileBg('fullcam-' + shotsUsed, false) + ';box-shadow:0 0 0 1px rgba(244,239,230,.16), 0 0 0 7px rgba(0,0,0,.55), 0 0 46px 8px rgba(0,0,0,.65), 0 26px 54px -18px rgba(0,0,0,.9)">' +
+        '<div id="viewfinderVideoSlot" style="position:absolute;inset:0"></div>' +
+        '<div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.6) 100%)"></div>' +
+        '<div style="position:absolute;inset:0;background:linear-gradient(115deg, rgba(255,255,255,.09) 0%, transparent 20%, transparent 82%, rgba(255,255,255,.04) 100%)"></div>' +
+        brackets +
+        (canShoot && cameraMode === 'none' ? '<div class="mono uc" style="position:absolute;top:10px;left:0;right:0;text-align:center;font-size:9px;letter-spacing:.12em;color:rgba(244,239,230,.55)">Starting camera…</div>' : '') +
+        (state.shotFlash ? '<div style="position:absolute;inset:0;background:var(--paper);animation:flashPulse .13s ease-out forwards"></div>' : '') +
+      '</div>' +
+    '</div>';
+
+  return '' +
+  '<div style="position:absolute;inset:0;background:#070604;display:flex;flex-direction:column">' +
+    statusBar() +
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 22px 6px;flex:none">' +
+      '<button data-act="close-full" aria-label="Close camera" style="width:36px;height:36px;border-radius:50%;background:rgba(244,239,230,.08);display:grid;place-items:center;color:var(--text)">' + ICONS.x + '</button>' +
+      (roll
+        ? '<div style="display:flex;align-items:center;gap:14px;flex:none">' +
+            '<div class="mono uc" style="font-size:10px;letter-spacing:.14em;color:var(--text-dimmer);white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis">' + esc(rollDisplayName(roll)) + '</div>' +
+            '<div style="display:flex;align-items:baseline;gap:3px;flex:none;white-space:nowrap;border-left:1px solid rgba(244,239,230,.14);padding-left:14px">' +
+              '<span class="mono" style="font-size:19px;line-height:1;color:var(--paper)">' + pad2(shotsUsed) + '</span>' +
+              '<span class="mono" style="font-size:11px;color:var(--text-faint)">/ ' + roll.totalShots + '</span>' +
+            '</div>' +
+          '</div>'
+        : '<span></span>') +
+    '</div>' +
+    '<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 24px">' + windowHtml + '</div>' +
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:20px;padding-bottom:28px;flex:none">' +
+      bottom +
+      '<div class="home-indicator" style="opacity:.5"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ───────────────────────── ceremony ───────────────────────── */
+function screenCeremony(){
+  var roll = rollById(state.ceremonyRollId);
+  if (!roll) return '';
+  var isEvent = roll.kind === 'event';
+  var ev = isEvent ? eventById(roll.eventId) : null;
+  var locked = isRollLocked(roll);
+  var eyebrow = !locked ? 'Developed' : (isEvent ? 'Fully loaded' : 'In the bath');
+  var headline = esc(rollDisplayName(roll)) + (locked ? ' is loaded' : ' is ready');
+  // Long event names have to fit the same three lines a short roll name does.
+  var headlineSize = headline.length > 34 ? 30 : (headline.length > 22 ? 36 : 42);
+  var printCaption = 'ROLL ' + pad2(roll.number) + ' · ' + roll.totalShots + ' FRAMES';
+  var subtext;
+  if (isEvent && ev){
+    subtext = 'It develops with the rest of the event, ' + esc(fmtDateAbs(ev.developAtMs)) + '.';
+  } else if (locked){
+    subtext = 'Develops in ' + fmtCountdown(msUntilReveal(roll)) + ' — you’ll get a nudge when it’s ready.';
+  } else {
+    subtext = 'You haven\'t seen any of these yet.';
+  }
+  var openLabel = locked ? 'See the roll' : 'Open the roll';
+  return '' +
+  '<div style="position:absolute;inset:0;z-index:6;background:#080706;display:flex;flex-direction:column;animation:surfaceIn .5s ease">' +
+    '<div style="position:absolute;left:-40%;top:8%;width:180%;height:60%;background:radial-gradient(ellipse at center, rgba(217,72,47,.16), transparent 62%)"></div>' +
+    statusBar() +
+    '<div style="position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:30px;padding:0 34px;text-align:center">' +
+      '<div style="position:relative;width:100%;max-width:270px">' +
+        '<div style="position:absolute;inset:14px -10px -14px;background:#151311;border:1px solid #241f1a;border-radius:3px"></div>' +
+        '<div style="position:absolute;inset:7px -5px -7px;background:#1a1714;border:1px solid #2a241e;border-radius:3px"></div>' +
+        '<div style="position:relative;background:var(--paper);padding:10px 10px 12px;border-radius:2px;box-shadow:0 24px 50px -14px rgba(0,0,0,.8)">' +
+          '<div style="aspect-ratio:1.43;background:' + tileBg('ceremony-'+roll.id, true) + ';animation:bath 2.6s ease-in-out infinite alternate"></div>' +
+          '<div class="mono uc" style="padding-top:10px;font-size:9px;letter-spacing:.12em;color:var(--print-caption);text-align:left">' + printCaption + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:10px">' +
+        '<div class="mono uc" style="font-size:10.5px;letter-spacing:.18em;color:var(--safelight)">' + eyebrow + '</div>' +
+        '<div class="serif" style="font-size:' + headlineSize + 'px;line-height:1.06;color:var(--text)">' + headline + '</div>' +
+        '<div style="font-size:14px;line-height:1.6;color:var(--text-dimmer);max-width:250px">' + subtext + '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:16px;width:100%">' +
+        '<button data-act="ceremony-open" class="paper-btn uc">' + openLabel + '</button>' +
+        '<button data-act="ceremony-later" class="ghost-link uc">Later</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="home-indicator-row"><div class="home-indicator"></div></div>' +
+  '</div>';
+}
+
+/* ───────────────────────── gallery ───────────────────────── */
+function tileMarkup(photo, opts){
+  opts = opts || {};
+  var inQueue = state.tray.indexOf(photo.id) >= 0;
+  var trayFull = !inQueue && state.tray.length >= MAX_SLOTS;
+  var inner;
+  if (photo.stage === 'developed'){
+    inner = '<div class="tile-photo" style="' + photoStyle(photo.id, false, true) + '" data-act="photo-tap:' + photo.id + '"></div>' +
+      '<button data-act="toggle-print:' + photo.id + '" aria-label="' + (inQueue ? 'Remove from print tray' : 'Add to print tray') + '" ' + (trayFull ? 'disabled' : '') + ' style="position:absolute;right:5px;bottom:5px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:' + (inQueue ? 'var(--safelight)' : 'rgba(20,18,16,.55)') + ';border:' + (inQueue ? 'none' : '1.2px solid rgba(244,239,230,.7)') + ';color:' + (inQueue?'#fff':'var(--text)') + ';opacity:' + (trayFull ? .45 : 1) + '">' +
+        (inQueue ? ICONS.check : ICONS.print) +
+      '</button>';
+  } else if (photo.stage === 'emerging'){
+    inner = '<div class="tile-photo" style="' + photoStyle(photo.id, false, true) + ';filter:blur(3px) saturate(.6);opacity:.65"></div>' +
+      '<div class="locked-overlay"><span class="cd mono">' + fmtCountdown(photo.revealInMs) + '</span></div>';
+  } else {
+    inner = '<div style="width:100%;height:100%;background:var(--surface);border:1px solid #1d1a17"></div>' +
+      '<div class="locked-overlay"><span class="cd mono">' + (photo.pending ? 'SHOOTING' : fmtCountdown(photo.revealInMs)) + '</span></div>';
+  }
+  return '<div style="position:relative;border-radius:1px;overflow:hidden;aspect-ratio:1.43">' + inner + '</div>';
+}
+
+function screenGallery(){
+  var roll = state.galleryRollId ? rollById(state.galleryRollId) : null;
+  var photos = galleryPhotos();
+  var orderedRolls = state.rolls.filter(function(r){ return !isGuestPlaceholder(r); }).slice().reverse();
+
+  var chips = '<button data-act="switch-roll:all" class="mono" style="flex:none;font-size:10px;letter-spacing:.12em;padding:8px 12px;border-radius:2px;background:' + (!roll?'var(--paper)':'transparent') + ';color:' + (!roll?'var(--text-on-paper)':'var(--text-dim)') + ';border:' + (!roll?'none':'1px solid var(--border-strong)') + '">ALL</button>';
+  orderedRolls.forEach(function(r){
+    var sel = state.galleryRollId === r.id;
+    var named = r.kind === 'event' || !!(r.name && r.name.trim());
+    var chipLabel = named ? rollDisplayName(r) : ('ROLL ' + pad2(r.number));
+    chips += '<button data-act="switch-roll:' + r.id + '" class="mono" style="flex:none;font-size:10px;letter-spacing:.12em;padding:8px 12px;border-radius:2px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:' + (sel?'var(--paper)':'transparent') + ';color:' + (sel?'var(--text-on-paper)':'var(--text-dim)') + ';border:' + (sel?'none':'1px solid var(--border-strong)') + '">' + esc(chipLabel) + '</button>';
+  });
+
+  var lockedCount = photos.filter(function(p){ return p.locked; }).length;
+  var footer;
+  if (lockedCount > 0){
+    var lockedRoll = roll || rollById(photos.filter(function(p){return p.locked;})[0].rollId);
+    var lockedRevealMs = msUntilReveal(lockedRoll);
+    footer = lockedRevealMs === null
+      ? (lockedCount + ' frame' + (lockedCount!==1?'s':'') + ' still in the camera · finish ' + rollDisplayName(lockedRoll) + ' to start developing')
+      : (lockedCount + ' frame' + (lockedCount!==1?'s':'') + ' still in the bath · ' + rollDisplayName(lockedRoll) + ' develops in ' + fmtCountdown(lockedRevealMs));
+  } else if (photos.length > 0){
+    footer = 'All developed · tap a frame to see it big';
+  } else { footer = ''; }
+
+  var grid = photos.length === 0
+    ? '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 30px;text-align:center;color:var(--text-ghost)">' + ICONS.film + '<div class="serif" style="font-size:19px;color:var(--text)">Roll is empty</div><div style="font-size:12.5px;color:var(--text-dimmer)">Open the camera to start exposing.</div></div>'
+    : '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:0 16px">' + photos.map(function(p){ return tileMarkup(p); }).join('') + '</div>';
+
+  return '' +
+  '<div style="position:absolute;inset:0;display:flex;flex-direction:column">' +
+    statusBar() +
+    '<div style="display:flex;flex-direction:column;gap:10px;padding:10px 22px 14px;flex:none">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<button data-act="gallery-back" style="display:flex;align-items:center;gap:2px;color:var(--text-dim);margin-left:-4px">' + ICONS.chev + '<span class="mono uc" style="font-size:10px;letter-spacing:.12em">Camera</span></button>' +
+        '<div class="mono uc" style="font-size:9.5px;letter-spacing:.12em;color:var(--text-ghost)">' + photos.length + ' frames</div>' +
+      '</div>' +
+      '<div class="serif" style="font-size:28px;line-height:1.05;color:var(--text)">' + (roll ? esc(rollDisplayName(roll)) : 'All Photos') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:7px;padding:0 22px 14px;overflow-x:auto;flex:none" class="noscroll">' + chips + '</div>' +
+    '<div style="flex:1;overflow-y:auto" class="noscroll">' + grid + '</div>' +
+    (state.tray.length === MAX_SLOTS
+      ? '<div style="padding:14px 16px 4px;display:flex;flex-direction:column;gap:8px;flex:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+            '<div class="mono uc" style="font-size:11px;letter-spacing:.12em;color:var(--safelight)">Ready for printing</div>' +
+            '<div class="mono" style="font-size:11px;letter-spacing:.06em;color:var(--text-faint)">12 / 12</div>' +
+          '</div>' +
+          '<button data-act="tab:printlab" class="paper-btn uc" style="padding:18px 0">Go to Print Lab</button>' +
+        '</div>'
+      : (footer ? '<div class="mono uc" style="padding:14px 22px 4px;font-size:9.5px;letter-spacing:.1em;color:var(--text-ghostest);line-height:1.6">' + esc(footer) + '</div>' : '')) +
+    tabBar() +
+  '</div>';
+}
+
+/* ───────────────────────── single photo ───────────────────────── */
+function screenSingle(){
+  var photo = findPhoto(state.singlePhotoId);
+  if (!photo){ return screenGallery(); }
+  var photos = galleryPhotos();
+  var idx = -1;
+  for (var i=0;i<photos.length;i++) if (photos[i].id===photo.id) idx = i;
+  var inQueue = state.tray.indexOf(photo.id) >= 0;
+  var toGo = MAX_SLOTS - state.tray.length;
+
+  var markLabel = photo.locked ? 'Locked' : (inQueue ? 'In tray · Remove' : 'Add to print tray');
+  var markBg = photo.locked ? 'var(--surface-raised)' : (inQueue ? 'var(--shell)' : 'var(--paper)');
+  var markColor = photo.locked ? 'var(--text-ghostest)' : (inQueue ? 'var(--paper)' : 'var(--text-on-paper)');
+  var markBorder = inQueue && !photo.locked ? '1px solid var(--paper)' : 'none';
+
+  var filmstrip = photos.map(function(p){
+    var cur = p.id === photo.id;
+    return '<button data-act="single-nav:' + p.id + '" aria-label="View frame ' + pad2(p.frameIndex+1) + '"' + (cur ? ' aria-current="true"' : '') + ' style="flex:0 0 50px;aspect-ratio:1.43;border-radius:1px;overflow:hidden;outline:' + (cur ? '1.5px solid var(--paper)' : 'none') + ';outline-offset:2px;opacity:' + (cur?1:(p.locked?.5:.72)) + ';' + photoStyle(p.id, false, !p.locked) + (p.locked ? ';filter:blur(2.5px) saturate(.6)' : '') + '"></button>';
+  }).join('');
+
+  return '' +
+  '<div style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--shell)">' +
+    statusBar() +
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 22px;flex:none">' +
+      '<button data-act="single-back" aria-label="Back to gallery" style="color:var(--text);margin-left:-4px">' + ICONS.chev + '</button>' +
+      '<div class="mono uc" style="font-size:10px;letter-spacing:.12em;color:var(--text-dimmer)">Roll ' + pad2(photo.rollNumber) + ' · Frame ' + pad2(photo.frameIndex+1) + ' of ' + photos.length + '</div>' +
+      '<span style="width:18px"></span>' +
+    '</div>' +
+    '<div style="flex:1;min-height:0;display:flex;align-items:center;padding:0 20px">' +
+      '<div style="width:100%;position:relative">' +
+        '<div style="position:relative;aspect-ratio:1.43;border-radius:2px;overflow:hidden;box-shadow:0 26px 54px -16px rgba(0,0,0,.8);' + photoStyle(photo.id, false, !photo.locked) + (photo.locked ? ';filter:blur(9px) saturate(.6)' : '') + '">' +
+          (photo.locked ? '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:rgba(15,12,9,.4);color:#fff">' + ICONS.lock + (photo.pending
+              ? '<div class="serif" style="font-size:16px">Still in the camera</div><div class="mono" style="font-size:10.5px;color:rgba(255,255,255,.75)">DEVELOPS AFTER YOU FINISH THE ROLL</div>'
+              : '<div class="serif" style="font-size:16px">Still developing</div><div class="mono" style="font-size:10.5px;color:rgba(255,255,255,.75)">READY IN ' + fmtCountdown(photo.revealInMs).toUpperCase() + '</div>') + '</div>' : '') +
+        '</div>' +
+        '<div class="mono uc" style="padding-top:12px;font-size:9.5px;letter-spacing:.1em;color:var(--text-faint)">' + esc(photo.time) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:12px;flex:none">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+        '<div class="mono uc" style="font-size:11px;letter-spacing:.12em;color:' + (toGo === 0 ? 'var(--safelight)' : 'var(--text-muted)') + '">' + (toGo === 0 ? 'Ready for printing' : toGo + ' slot' + (toGo!==1?'s':'') + ' still available') + '</div>' +
+        '<div class="mono" style="font-size:11px;letter-spacing:.06em;color:var(--text-faint)">' + state.tray.length + ' / 12</div>' +
+      '</div>' +
+      (toGo === 0
+        ? '<button data-act="tab:printlab" style="width:100%;background:var(--paper);color:var(--text-on-paper);border:none;font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:20px 0;text-align:center;border-radius:2px">GO TO PRINT LAB</button>' +
+          (inQueue ? '<button data-act="confirm-remove-tray:' + photo.id + '" class="ghost-link uc">Remove this frame</button>' : '')
+        : '<button data-act="toggle-print:' + photo.id + '" ' + (photo.locked?'disabled':'') + ' style="width:100%;background:' + markBg + ';color:' + markColor + ';border:' + markBorder + ';font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:20px 0;text-align:center;border-radius:2px">' + esc(markLabel.toUpperCase()) + '</button>') +
+    '</div>' +
+    '<div style="display:flex;gap:5px;padding:18px 20px 22px;overflow-x:auto;flex:none" class="noscroll">' + filmstrip + '</div>' +
+  '</div>';
+}
+
+/* ───────────────────────── print lab ───────────────────────── */
+function orderCard(order){
+  var msLeft = Math.max(0, order.readyAtMs - state.now);
+  var ready = msLeft <= 0;
+  var preview = order.photos.slice(0,6).map(function(p){
+    return '<div style="flex:none;width:32px;aspect-ratio:1.43;border-radius:2px;overflow:hidden;' + photoStyle(p.id, false, true) + '"></div>';
+  }).join('');
+  return '' +
+  '<button data-act="view-order:' + order.id + '" style="width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:10px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+      '<div style="min-width:0">' +
+        '<div class="serif" style="font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(order.name) + '</div>' +
+        '<div class="mono" style="font-size:9.5px;letter-spacing:.08em;color:var(--text-faint);margin-top:2px">' + order.pickupCode + ' · ' + esc(order.location) + ' · ' + order.count + ' PRINTS</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex:none">' +
+        '<div class="mono uc" style="font-size:9px;letter-spacing:.1em;color:' + (ready?'var(--paper)':'var(--safelight)') + '">' + (ready?'Ready':'Printing') + '</div>' +
+        (ready ? '' : '<div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:2px">' + fmtCountdown(msLeft) + '</div>') +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:5px;overflow:hidden">' + preview + '</div>' +
+    (ready ?
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--hairline)">' +
+        '<span class="mono" style="font-size:10.5px;color:var(--text-dim)">Ready for pickup now</span>' +
+        '<span data-act="confirm-pickup:' + order.id + '" role="button" tabindex="0" aria-label="Mark order as picked up" class="mono uc" style="font-size:10px;letter-spacing:.08em;background:var(--paper);color:var(--text-on-paper);padding:6px 12px;border-radius:20px">Picked up</span>' +
+      '</div>' : '') +
+  '</button>';
+}
+
+function screenPrintLab(){
+  var slots = [];
+  for (var i=0;i<MAX_SLOTS;i++) slots.push(state.tray[i] || null);
+  var isFull = state.tray.length === MAX_SLOTS;
+  var total = state.tray.length * PRICE_PER_PRINT;
+  var toGoNum = MAX_SLOTS - state.tray.length;
+
+  var slotsHtml = slots.map(function(id, i){
+    if (id){
+      var p = findPhoto(id);
+      return '<div style="position:relative;aspect-ratio:1.43;border-radius:1px;overflow:hidden;' + photoStyle(id, true, true) + '">' +
+        '<button data-act="confirm-remove-tray:' + id + '" aria-label="Remove this print" style="position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:rgba(20,18,16,.6);display:grid;place-items:center;color:#fff">' + ICONS.x + '</button>' +
+      '</div>';
+    }
+    return '<button data-act="empty-slot" aria-label="Empty slot ' + pad2(i+1) + ' — choose a photo to fill it" style="aspect-ratio:1.43;border-radius:1px;border:1px dashed var(--slot-dash);display:grid;place-items:center">' +
+      '<span class="mono" style="font-size:10px;color:var(--slot-num)">' + pad2(i+1) + '</span></button>';
+  }).join('');
+
+  var recentHtml = state.recentPrints.length ? (
+    '<div style="padding:6px 16px 4px">' +
+      '<div class="mono uc" style="font-size:9.5px;letter-spacing:.14em;color:var(--text-ghostest);margin-bottom:10px">Recent Prints</div>' +
+      '<div style="display:flex;gap:8px;overflow-x:auto" class="noscroll">' +
+        state.recentPrints.map(function(id){ return '<div style="flex:none;height:66px;aspect-ratio:1.43;border-radius:3px;overflow:hidden;' + photoStyle(id, true, true) + '"></div>'; }).join('') +
+      '</div>' +
+    '</div>'
+  ) : '';
+
+  var ordersHtml = state.orders.length ? (
+    '<div style="padding:16px 16px 4px">' +
+      '<div class="mono uc" style="font-size:9.5px;letter-spacing:.14em;color:var(--text-ghostest);margin-bottom:10px">Currently Printing</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">' + state.orders.map(orderCard).join('') + '</div>' +
+    '</div>'
+  ) : '';
+
+  return '' +
+  '<div style="position:absolute;inset:0;display:flex;flex-direction:column">' +
+    statusBar() +
+    '<div style="padding:14px 22px 12px;flex:none">' +
+      '<div class="serif" style="font-size:26px;line-height:1;color:var(--text)">Print Lab</div>' +
+      '<div class="mono uc" style="font-size:10px;letter-spacing:.1em;color:var(--text-dimmer);margin-top:4px">' + state.tray.length + ' of 12 slots marked · Standard 3R</div>' +
+    '</div>' +
+    '<div style="flex:1;overflow-y:auto" class="noscroll">' +
+      ordersHtml +
+      '<div style="padding:12px 16px 0">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<div class="mono uc" style="font-size:9.5px;letter-spacing:.14em;color:var(--text-ghostest)">Finish</div>' +
+          '<div style="display:flex;border:1px solid var(--border-strong);border-radius:2px;overflow:hidden">' +
+            ['matte','glossy'].map(function(f){
+              var sel = state.finish === f;
+              return '<button data-act="finish:' + f + '" class="mono uc" style="font-size:10px;letter-spacing:.08em;padding:7px 14px;background:' + (sel?'var(--paper)':'transparent') + ';color:' + (sel?'var(--text-on-paper)':'var(--text-dim)') + '">' + f + '</button>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">' + slotsHtml + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:14px">' +
+          '<div class="serif" style="font-style:italic;font-size:16px;color:var(--text-dim)">' + (isFull ? 'Twelve, ready' : SPELLED[toGoNum] + ' to go') + '</div>' +
+          '<div class="mono" style="font-size:10px;letter-spacing:.06em;color:var(--text-ghost)">₱' + total + ' · ₱15 EACH</div>' +
+        '</div>' +
+        '<button data-act="start-order" class="paper-btn ' + (isFull?'':'disabled') + '" style="margin-top:10px" ' + (isFull?'':'disabled') + '>' + (isFull ? 'Print My Memories' : 'Mark ' + toGoNum + ' more to fill the sheet') + '</button>' +
+      '</div>' +
+      recentHtml +
+      '<div style="height:16px"></div>' +
+    '</div>' +
+    tabBar() +
+    (state.orderStep ? orderFlowSheet() : '') +
+    (state.viewingOrderId ? orderPopup() : '') +
+  '</div>';
+}
+
+/* ───────────────────────── order flow sheet ───────────────────────── */
+function sheetShell(inner, opts){
+  opts = opts || {};
+  var closable = opts.closable !== false;
+  var closeAct = opts.closeAct || 'close-order-flow';
+  var zIndex = opts.zIndex || 7;
+  return '' +
+  '<div style="position:absolute;inset:0;z-index:' + zIndex + ';display:flex;flex-direction:column;justify-content:flex-end;background:rgba(6,5,5,.8)" ' + (closable ? 'data-act="' + closeAct + '" data-backdrop="1"' : '') + '>' +
+    '<div style="background:var(--surface);border-top:1px solid var(--border-strong);border-radius:16px 16px 41px 41px;padding:14px 22px 26px;display:flex;flex-direction:column;gap:20px;max-height:88%;overflow-y:auto;animation:sheetUp .28s ease" class="noscroll">' +
+      '<div style="width:44px;height:4px;border-radius:2px;background:var(--border-hover);align-self:center;flex:none"></div>' +
+      inner +
+    '</div>' +
+  '</div>';
+}
+
+function orderFlowSheet(){
+  if (state.orderStep === 'fulfillment') return sheetShell(fulfillmentPane());
+  if (state.orderStep === 'location') return sheetShell(locationPane());
+  if (state.orderStep === 'payment') return sheetShell(paymentPane());
+  if (state.orderStep === 'processing') return sheetShell(processingPane(), { closable:false });
+  if (state.orderStep === 'done') return sheetShell(donePane(), { closable:false });
+  return '';
+}
+
+function stepHeader(label, backAct, ariaLabel){
+  ariaLabel = ariaLabel || 'Back';
+  return '<div style="display:flex;align-items:center;gap:10px">' +
+    (backAct ? '<button data-act="' + backAct + '" aria-label="' + esc(ariaLabel) + '" style="width:28px;height:28px;border-radius:50%;background:var(--surface-raised);display:grid;place-items:center;color:var(--text-dim)">' + ICONS.chev + '</button>' : '') +
+    '<div class="mono uc" style="font-size:9.5px;letter-spacing:.16em;color:var(--text-ghost)">' + esc(label) + '</div>' +
+  '</div>';
+}
+
+function fulfillmentPane(){
+  return '' +
+    stepHeader('Step 1 of 3', 'close-order-flow', 'Close') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">What should this album be called?</div>' +
+    '<div>' +
+      '<input id="albumNameInput" type="text" maxlength="40" placeholder="e.g. August, mostly buses" value="' + esc(state.albumName) + '" ' +
+      'style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-hover);padding-bottom:12px;font-family:var(--serif);font-size:21px;color:var(--text);outline:none" />' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:9px">' +
+      '<button data-act="choose-fulfillment:pickup" style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--paper);border-radius:3px;padding:15px;text-align:left">' +
+        '<div><div style="font-size:14.5px;font-weight:500;color:var(--text)">Pickup</div><div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:3px">READY IN 48 HOURS</div></div>' +
+        '<div style="width:15px;height:15px;border-radius:50%;background:var(--paper)"></div>' +
+      '</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-strong);border-radius:3px;padding:15px;opacity:.45">' +
+        '<div><div style="font-size:14.5px;font-weight:500;color:var(--text)">Delivery</div><div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:3px">SOON</div></div>' +
+        '<div style="width:15px;height:15px;border-radius:50%;border:1px solid var(--text-ghost)"></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function locationPane(){
+  var readyBy = fmtReadyBy(state.now, READY_HOURS);
+  return '' +
+    stepHeader('Step 2 of 3', 'order-back:fulfillment') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">Where are you picking them up?</div>' +
+    '<div style="display:flex;flex-direction:column;gap:9px">' +
+      LOCATIONS.map(function(loc){
+        var sel = state.pickupLocation === loc;
+        var sub = loc === 'One Ayala' ? 'LEVEL 2 · MAKATI' : 'GROUND FLOOR · QUEZON CITY';
+        return '<button data-act="choose-location:' + loc.replace(' ','_') + '" style="display:flex;justify-content:space-between;align-items:center;border:1px solid ' + (sel?'var(--paper)':'var(--border-strong)') + ';border-radius:3px;padding:15px;text-align:left">' +
+          '<div><div style="font-size:14.5px;font-weight:500;color:var(--text)">' + esc(loc) + '</div><div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:3px">' + sub + '</div></div>' +
+          '<div style="width:15px;height:15px;border-radius:50%;background:' + (sel?'var(--paper)':'transparent') + ';border:' + (sel?'none':'1px solid var(--text-ghost)') + '"></div>' +
+        '</button>';
+      }).join('') +
+    '</div>' +
+    '<div style="border-left:2px solid var(--safelight);padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:4px">' +
+      '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--safelight)">Ready in 48 hours</div>' +
+      '<div class="serif" style="font-size:18px;color:var(--text)">' + readyBy + '</div>' +
+    '</div>';
+}
+
+function paymentPane(){
+  var name = state.albumName.trim() || 'Untitled Album';
+  var count = state.tray.length;
+  var total = count * PRICE_PER_PRINT;
+  var readyBy = fmtReadyBy(state.now, READY_HOURS);
+  var rows = [
+    ['ALBUM', name], ['PRINTS', count + ' · Standard 3R'], ['FINISH', state.finish.charAt(0).toUpperCase()+state.finish.slice(1)],
+    ['PICKUP', state.pickupLocation || '—'], ['READY BY', readyBy]
+  ];
+  var methods = [['card','Card'],['gcash','GCash'],['maya','Maya']];
+  return '' +
+    stepHeader('Step 3 of 3', 'order-back:location') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">One sheet, twelve prints</div>' +
+    '<div style="border-top:1px solid var(--border-strong)">' +
+      rows.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--hairline)">' +
+          '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-ghost)">' + r[0] + '</div>' +
+          '<div style="font-size:13.5px;color:var(--text)">' + esc(r[1]) + '</div></div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:7px">' +
+      methods.map(function(m){
+        var sel = state.payMethod === m[0];
+        return '<button data-act="pay-method:' + m[0] + '" class="mono uc" style="flex:1;text-align:center;font-size:10px;letter-spacing:.08em;padding:12px 0;border:1px solid ' + (sel?'var(--paper)':'var(--border-strong)') + ';border-radius:2px;color:' + (sel?'var(--paper)':'var(--text-dim)') + '">' + m[1] + '</button>';
+      }).join('') +
+    '</div>' +
+    '<button data-act="confirm-payment" style="display:flex;justify-content:space-between;align-items:center;background:var(--paper);color:var(--text-on-paper);border-radius:2px;padding:16px 18px">' +
+      '<span class="mono uc" style="font-size:11px;letter-spacing:.14em">Pay</span>' +
+      '<span class="serif" style="font-size:22px">₱' + total + '.00</span>' +
+    '</button>';
+}
+
+function processingPane(){
+  return '' +
+    '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 10px 30px;text-align:center">' +
+      '<div style="width:52px;height:52px;border-radius:50%;border:2px solid var(--border-strong);border-top-color:var(--safelight);animation:spin 1s linear infinite"></div>' +
+      '<div class="serif" style="font-size:23px;color:var(--text);margin-top:14px">Placing your order' + '·'.repeat(state.processingDots) + '</div>' +
+      '<div class="mono" style="font-size:10.5px;letter-spacing:.08em;color:var(--text-dimmer)">Sending your sheet to the lab</div>' +
+      '<div style="width:100%;height:3px;border-radius:2px;background:var(--border-strong);overflow:hidden;margin-top:14px">' +
+        '<div style="height:100%;width:' + state.processingProgress + '%;background:var(--safelight);transition:width .25s ease"></div>' +
+      '</div>' +
+      '<div class="mono" style="font-size:10px;color:var(--text-ghostest)">' + Math.round(state.processingProgress) + '%</div>' +
+    '</div>';
+}
+
+function donePane(){
+  var order = state.orders[state.orders.length - 1];
+  var name = state.albumName.trim() || 'Untitled Album';
+  var readyBy = fmtReadyBy(state.now, READY_HOURS);
+  return '' +
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<div class="mono uc" style="font-size:9.5px;letter-spacing:.16em;color:var(--safelight)">Order placed</div>' +
+      '<div class="serif" style="font-size:30px;line-height:1.08;color:var(--text)">Your prints are in the bath</div>' +
+      '<div style="font-size:13.5px;line-height:1.6;color:var(--text-dimmer)">We\'ll hold them at the counter for seven days. Bring the code.</div>' +
+    '</div>' +
+    '<div style="border:1px solid var(--border-strong);border-radius:3px;padding:18px;display:flex;flex-direction:column;gap:14px">' +
+      '<div style="display:flex;flex-direction:column;gap:5px">' +
+        '<div class="mono uc" style="font-size:9px;letter-spacing:.14em;color:var(--text-ghost)">Pickup code</div>' +
+        '<div class="mono" style="font-size:28px;letter-spacing:.06em;color:var(--paper)">' + (order ? order.pickupCode : '—') + '</div>' +
+      '</div>' +
+      '<div style="height:1px;background:var(--hairline)"></div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        [['ALBUM', name], ['PRINTS', MAX_SLOTS + ' · ' + (state.finish.charAt(0).toUpperCase()+state.finish.slice(1)) + ' 3R'], ['PICKUP', state.pickupLocation || '—'], ['READY BY', readyBy]].map(function(r){
+          return '<div style="display:flex;justify-content:space-between"><span class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-ghost)">' + r[0] + '</span><span style="font-size:13px;color:var(--text)">' + esc(r[1]) + '</span></div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '<button data-act="order-done" class="paper-btn uc">Back to Print Lab</button>';
+}
+
+function orderPopup(){
+  var order = orderById(state.viewingOrderId);
+  if (!order) return '';
+  var msLeft = Math.max(0, order.readyAtMs - state.now);
+  var ready = msLeft <= 0;
+  var grid = order.photos.map(function(p){
+    return '<div style="aspect-ratio:1.43;border-radius:1px;overflow:hidden;' + photoStyle(p.id, true, true) + '"></div>';
+  }).join('');
+  return '' +
+  '<div style="position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(6,5,5,.78)" data-act="close-order-popup" data-backdrop="1">' +
+    '<div style="background:var(--surface);border-top:1px solid var(--border-strong);border-radius:16px 16px 41px 41px;padding:14px 16px 24px;display:flex;flex-direction:column;gap:16px;max-height:82%;overflow-y:auto;animation:sheetUp .28s ease" class="noscroll">' +
+      '<div style="width:44px;height:4px;border-radius:2px;background:var(--border-hover);align-self:center;flex:none"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;padding:0 6px">' +
+        '<div><div class="serif" style="font-size:23px;line-height:1;color:var(--text)">' + esc(order.name) + '</div><div class="mono" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-faint);margin-top:5px">' + order.pickupCode + ' · ' + esc(order.location) + '</div></div>' +
+        '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:' + (ready?'var(--paper)':'var(--safelight)') + '">' + (ready ? 'Ready' : fmtCountdown(msLeft) + ' left') + '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">' + grid + '</div>' +
+      '<button data-act="confirm-pickup:' + order.id + '" class="mono uc" style="font-size:10px;letter-spacing:.12em;color:' + (ready?'var(--paper)':'var(--text-ghostest)') + ';text-align:center;padding:10px 0">Mark as picked up</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ───────────────────────── confirm sheet ───────────────────────── */
+function confirmSheet(){
+  var a = state.confirmAction;
+  if (!a) return '';
+  var copy = a.kind === 'pickup'
+    ? { eyebrow:'Mark as picked up', title:'Picked up?', body:'This removes the order from your Print Lab list for good — there’s no undo in the prototype.', confirmLabel:'Mark picked up' }
+    : { eyebrow:'Remove print', title:'Take this out of the sheet?', body:'It leaves your 12-slot tray. You can add it back anytime before you order.', confirmLabel:'Remove' };
+  var inner =
+    '<div style="display:flex;flex-direction:column;gap:6px;text-align:center;padding:6px 4px 0">' +
+      '<div class="mono uc" style="font-size:9.5px;letter-spacing:.16em;color:var(--safelight)">' + esc(copy.eyebrow) + '</div>' +
+      '<div class="serif" style="font-size:24px;line-height:1.15;color:var(--text)">' + esc(copy.title) + '</div>' +
+      '<div style="font-size:13px;line-height:1.6;color:var(--text-dimmer);padding:2px 6px 0">' + esc(copy.body) + '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px;padding-top:8px">' +
+      '<button data-act="confirm-do" class="paper-btn uc">' + esc(copy.confirmLabel) + '</button>' +
+      '<button data-act="confirm-cancel" class="ghost-link uc">Cancel</button>' +
+    '</div>';
+  return sheetShell(inner, { closeAct:'confirm-cancel', zIndex:9 });
+}
+
+/* ───────────────────────── start flow: new roll / new event ───────────────────────── */
+function startFlowSheet(){
+  var opts = { closeAct:'close-start-flow' };
+  if (state.startStep === 'choose')    return sheetShell(startChooserPane(), opts);
+  if (state.startStep === 'roll-name') return sheetShell(rollNamePane(), opts);
+  if (state.startStep === 'guests')    return sheetShell(eventGuestsPane(), opts);
+  if (state.startStep === 'end')       return sheetShell(eventEndPane(), opts);
+  if (state.startStep === 'develop')   return sheetShell(eventDevelopPane(), opts);
+  if (state.startStep === 'review')    return sheetShell(eventReviewPane(), opts);
+  return '';
+}
+
+function rollNamePane(){
+  var nextNum = pad2(nextVisibleRollNumber());
+  var delay = state.draftRollDelay || 24;
+  return '' +
+    stepHeader('New Roll', 'start-back:choose') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">What should this roll be called?</div>' +
+    '<div>' +
+      '<input id="rollNameInput" type="text" maxlength="40" placeholder="e.g. Sunday drive (optional)" value="' + esc(state.draftRollName || '') + '" ' +
+      'style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-hover);padding-bottom:12px;font-family:var(--serif);font-size:21px;color:var(--text);outline:none" />' +
+    '</div>' +
+    '<div class="mono uc" style="font-size:9.5px;letter-spacing:.14em;color:var(--text-ghost)">Develop how soon after you finish shooting?</div>' +
+    '<div style="display:flex;gap:9px">' +
+      [24,48].map(function(h){
+        var sel = delay === h;
+        return '<button data-act="pick-roll-delay:' + h + '" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid ' + (sel?'var(--paper)':'var(--border-strong)') + ';border-radius:3px;padding:14px 8px;background:' + (sel?'rgba(244,239,230,.06)':'transparent') + '">' +
+          '<div class="serif" style="font-size:22px;color:var(--text)">' + h + 'h</div>' +
+          '<div class="mono uc" style="font-size:9px;letter-spacing:.08em;color:var(--text-faint)">after last shot</div>' +
+        '</button>';
+      }).join('') +
+    '</div>' +
+    '<div class="mono" style="font-size:10.5px;color:var(--text-faint);line-height:1.6">' + ROLL_EXPOSURES + ' exposures · leave blank for &ldquo;Roll ' + nextNum + '&rdquo;</div>' +
+    '<button data-act="create-roll" class="paper-btn uc">Start Roll</button>';
+}
+
+function startChooserPane(){
+  return '' +
+    stepHeader('Start something new', 'close-start-flow', 'Close') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">Roll, or a whole event?</div>' +
+    '<div style="display:flex;flex-direction:column;gap:9px">' +
+      '<button data-act="choose-start:roll" style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--paper);border-radius:3px;padding:16px;text-align:left">' +
+        '<div><div style="font-size:15px;font-weight:500;color:var(--text)">New Roll</div><div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:3px">' + ROLL_EXPOSURES + ' EXPOSURES · JUST FOR YOU</div></div>' +
+        '<span style="color:var(--text-dim);display:inline-flex;transform:rotate(180deg)">' + ICONS.chev + '</span>' +
+      '</button>' +
+      '<button data-act="choose-start:event" style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-strong);border-radius:3px;padding:16px;text-align:left">' +
+        '<div><div style="font-size:15px;font-weight:500;color:var(--text)">New Event</div><div class="mono" style="font-size:9.5px;color:var(--text-faint);margin-top:3px">INVITE FRIENDS · SHOOT TOGETHER</div></div>' +
+        '<span style="color:var(--text-dim);display:inline-flex;transform:rotate(180deg)">' + ICONS.chev + '</span>' +
+      '</button>' +
+    '</div>';
+}
+
+function eventGuestsPane(){
+  var d = state.draftEvent;
+  return '' +
+    stepHeader('New Event · Step 1 of 3', 'start-back:choose') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">What should this event be called?</div>' +
+    '<div>' +
+      '<input id="eventNameInput" type="text" maxlength="40" placeholder="e.g. Boracay weekend" value="' + esc(d.name || '') + '" ' +
+      'style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-hover);padding-bottom:12px;font-family:var(--serif);font-size:21px;color:var(--text);outline:none" />' +
+    '</div>' +
+    '<div class="mono uc" style="font-size:9.5px;letter-spacing:.14em;color:var(--text-ghost)">How many guests can you invite?</div>' +
+    '<div style="display:flex;gap:9px">' +
+      GUEST_OPTIONS.map(function(n){
+        var sel = d.guestCount === n;
+        return '<button data-act="pick-guests:' + n + '" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid ' + (sel?'var(--paper)':'var(--border-strong)') + ';border-radius:3px;padding:16px 8px;background:' + (sel?'rgba(244,239,230,.06)':'transparent') + '">' +
+          '<div class="serif" style="font-size:26px;color:var(--text)">' + n + '</div>' +
+          '<div class="mono uc" style="font-size:9px;letter-spacing:.08em;color:var(--text-faint)">guests</div>' +
+        '</button>';
+      }).join('') +
+    '</div>' +
+    (d.guestCount ? '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-ghost)">' + (d.guestCount + 1) + ' rolls total · you + ' + d.guestCount + ' guest' + (d.guestCount!==1?'s':'') + '</div>' : '') +
+    '<button data-act="start-next:end" class="paper-btn ' + (d.guestCount?'':'disabled') + '" ' + (d.guestCount?'':'disabled') + '>Continue</button>';
+}
+
+function eventEndPane(){
+  var d = state.draftEvent;
+  var todayStr = new Date(state.now).toISOString().slice(0,10);
+  return '' +
+    stepHeader('New Event · Step 2 of 3', 'start-back:guests') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">When does the event end?</div>' +
+    '<div>' +
+      '<input id="eventEndInput" type="date" min="' + todayStr + '" value="' + esc(d.endDateStr || '') + '" ' +
+      'style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-hover);padding-bottom:12px;font-family:var(--mono);font-size:16px;color:var(--text);outline:none;color-scheme:dark" />' +
+    '</div>' +
+    '<div class="mono" style="font-size:10.5px;color:var(--text-faint);line-height:1.6">Guests can shoot until midnight on this date. Nobody can add more frames after that.</div>' +
+    '<button data-act="start-next:develop" class="paper-btn ' + (d.endAtMs?'':'disabled') + '" ' + (d.endAtMs?'':'disabled') + '>Continue</button>';
+}
+
+function eventDevelopPane(){
+  var d = state.draftEvent;
+  // Only offer offsets from the event's own end time — both are guaranteed to land
+  // after the event actually ends, so there's no way to pick a develop time that's
+  // earlier than the end time (a custom date picker used to allow exactly that).
+  var options = [['after24','24 hours after the event ends'],['after48','48 hours after the event ends']];
+  return '' +
+    stepHeader('New Event · Step 3 of 3', 'start-back:end') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">When should the rolls develop?</div>' +
+    '<div style="display:flex;flex-direction:column;gap:9px">' +
+      options.map(function(o){
+        var sel = d.developMode === o[0];
+        return '<button data-act="pick-develop:' + o[0] + '" style="display:flex;justify-content:space-between;align-items:center;border:1px solid ' + (sel?'var(--paper)':'var(--border-strong)') + ';border-radius:3px;padding:15px;text-align:left">' +
+          '<div style="font-size:14.5px;font-weight:500;color:var(--text)">' + o[1] + '</div>' +
+          '<div style="width:15px;height:15px;border-radius:50%;background:' + (sel?'var(--paper)':'transparent') + ';border:' + (sel?'none':'1px solid var(--text-ghost)') + '"></div>' +
+        '</button>';
+      }).join('') +
+    '</div>' +
+    '<button data-act="start-next:review" class="paper-btn ' + (draftDevelopReady(d)?'':'disabled') + '" ' + (draftDevelopReady(d)?'':'disabled') + '>Continue</button>';
+}
+
+function eventReviewPane(){
+  var d = state.draftEvent;
+  var developAtMs = resolvedDevelopAtMs(d);
+  var rows = [
+    ['EVENT', (d.name && d.name.trim()) ? d.name.trim() : 'Untitled Event'],
+    ['GUESTS', d.guestCount + ' + you = ' + (d.guestCount + 1) + ' rolls'],
+    ['EVENT ENDS', fmtDateAbs(d.endAtMs)],
+    ['DEVELOPS', fmtDateAbs(developAtMs)]
+  ];
+  return '' +
+    stepHeader('New Event · Review', 'start-back:develop') +
+    '<div class="serif" style="font-size:28px;line-height:1.1;color:var(--text)">Ready to send invites</div>' +
+    '<div style="border-top:1px solid var(--border-strong)">' +
+      rows.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--hairline)">' +
+          '<div class="mono uc" style="font-size:9.5px;letter-spacing:.1em;color:var(--text-ghost)">' + r[0] + '</div>' +
+          '<div style="font-size:13.5px;color:var(--text)">' + esc(r[1]) + '</div></div>';
+      }).join('') +
+    '</div>' +
+    '<div class="mono" style="font-size:10.5px;color:var(--text-faint);line-height:1.6">Each guest gets their own ' + ROLL_EXPOSURES + '-exposure roll. Nobody sees any of it — including you — until developing day.</div>' +
+    '<button data-act="create-event" class="paper-btn uc">Create Event</button>';
+}
+
+function eventDetailPane(event){
+  if (!event) return '';
+  var youRoll = rollById(event.rollIds[0]);
+  var guestRolls = event.rollIds.slice(1).map(rollById).filter(Boolean);
+  var locked = youRoll ? msUntilReveal(youRoll) > 0 : false;
+  var rows = [
+    ['ENDS', fmtDateAbs(event.endAtMs)],
+    ['DEVELOPS', fmtDateAbs(event.developAtMs)]
+  ];
+  var youRow = youRoll ? (
+    '<button data-act="roster-open-you:' + youRoll.id + '" aria-label="Open your roll" style="display:flex;justify-content:space-between;align-items:center;width:100%;border:1px solid var(--paper);border-radius:3px;padding:13px 15px;text-align:left">' +
+      '<span style="font-size:14px;font-weight:500;color:var(--text)">You</span>' +
+      '<span class="mono uc" style="font-size:9.5px;letter-spacing:.08em;color:var(--text-faint)">' + youRoll.shotCount + ' / ' + ROLL_EXPOSURES + (locked ? ' · locked' : '') + '</span>' +
+    '</button>'
+  ) : '';
+  var guestRows = guestRolls.map(function(g){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-strong);border-radius:3px;padding:13px 15px;opacity:.55">' +
+      '<span style="font-size:14px;color:var(--text)">' + esc(g.label) + '</span>' +
+      '<span class="mono uc" style="font-size:9.5px;letter-spacing:.08em;color:var(--text-faint)">' + (g.shotCount > 0 ? g.shotCount + ' / ' + ROLL_EXPOSURES : 'Not started') + '</span>' +
+    '</div>';
+  }).join('');
+  return '' +
+    stepHeader('Event roster', 'close-roster', 'Close') +
+    '<div style="display:flex;flex-direction:column;gap:4px">' +
+      '<div class="serif" style="font-size:26px;line-height:1;color:var(--text)">' + esc(rollDisplayName(youRoll)) + '</div>' +
+      '<div class="mono uc" style="font-size:9px;letter-spacing:.1em;color:var(--text-faint)">' +
+        event.guestCount + ' GUESTS INVITED · ' + rows.map(function(r){ return r[0] + ' ' + r[1]; }).join(' · ') +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' + youRow + guestRows + '</div>' +
+    '<div class="mono" style="font-size:10px;color:var(--text-ghostest);line-height:1.6">Guest rolls fill in as friends shoot on their own phones — this prototype shows them as placeholders.</div>';
+}
+
+/* ───────────────────────── main render ───────────────────────── */
+function currentScreenHtml(){
+  if (state.cameraView === 'full' && state.tab === 'camera') return screenFullCamera();
+  if (state.tab === 'printlab') return screenPrintLab();
+  if (state.cameraView === 'gallery') return screenGallery();
+  if (state.cameraView === 'single') return screenSingle();
+  return screenCameraHome();
+}
+
+// Which "page" is showing, and how deep it sits in the camera's navigation
+// tree (home is the root; Full Camera and Gallery are pushed from home;
+// Single Photo is pushed from Gallery). Print Lab is a sibling tab, not part
+// of that stack, so tab switches don't get a directional slide.
+function routeInfo(){
+  if (state.tab === 'printlab') return { key:'printlab', depth:0 };
+  var depths = { home:0, full:1, gallery:1, single:2 };
+  return { key:'camera:' + state.cameraView, depth: depths[state.cameraView] };
+}
+var lastRoute = null;
+
+function render(){
+  var route = routeInfo();
+  var animClass = '';
+  if (lastRoute && lastRoute.key !== route.key && route.key.split(':')[0] === lastRoute.key.split(':')[0]){
+    animClass = route.depth > lastRoute.depth ? ' anim-push' : (route.depth < lastRoute.depth ? ' anim-pop' : '');
+  }
+  var html = '<div class="' + animClass.trim() + '" style="position:absolute;inset:0">' + currentScreenHtml() + '</div>';
+  if (state.ceremonyRollId) html += screenCeremony();
+  if (state.startStep) html += startFlowSheet();
+  if (state.rosterEventId) html += sheetShell(eventDetailPane(eventById(state.rosterEventId)), { closeAct:'close-roster' });
+  if (state.confirmAction) html += confirmSheet();
+  document.getElementById('screen').innerHTML = html;
+  lastRoute = route;
+  if (state.cameraView === 'full' && cameraMode === 'live' && cameraVideoEl){
+    var vfSlot = document.getElementById('viewfinderVideoSlot');
+    if (vfSlot){
+      vfSlot.appendChild(cameraVideoEl);
+      var playPromise = cameraVideoEl.play();
+      if (playPromise && playPromise.catch) playPromise.catch(function(){});
+    }
+  }
+  var fileInput = document.getElementById('cameraFileInput');
+  if (fileInput){ fileInput.addEventListener('change', handleFileCapture); }
+  saveState();
+  var input = document.getElementById('albumNameInput');
+  if (input){
+    input.addEventListener('input', function(e){ state.albumName = e.target.value; });
+    var pos = input.value.length;
+    input.focus();
+    try { input.setSelectionRange(pos, pos); } catch(e){}
+  }
+  var endInput = document.getElementById('eventEndInput');
+  if (endInput){ endInput.addEventListener('change', function(e){ setEventEndDate(e.target.value); }); }
+  var rollNameInput = document.getElementById('rollNameInput');
+  if (rollNameInput){
+    rollNameInput.addEventListener('input', function(e){ state.draftRollName = e.target.value; });
+    var rPos = rollNameInput.value.length;
+    rollNameInput.focus();
+    try { rollNameInput.setSelectionRange(rPos, rPos); } catch(e){}
+  }
+  var eventNameInput = document.getElementById('eventNameInput');
+  if (eventNameInput){
+    eventNameInput.addEventListener('input', function(e){ setEventName(e.target.value); });
+    var ePos = eventNameInput.value.length;
+    eventNameInput.focus();
+    try { eventNameInput.setSelectionRange(ePos, ePos); } catch(e){}
+  }
+}
+
+/* ───────────────────────── event delegation ───────────────────────── */
+document.getElementById('screen').addEventListener('click', function(e){
+  var el = e.target.closest('[data-act]');
+  if (!el) return;
+  if (el.dataset.backdrop && e.target !== el) return;
+  var act = el.getAttribute('data-act');
+  var parts = act.split(':');
+  var cmd = parts[0], arg = parts[1];
+
+  switch(cmd){
+    case 'open-full': openFullCamera(); break;
+    case 'close-full': closeFullCamera(); break;
+    case 'capture': onShutterTap(); break;
+    case 'open-start-flow': openStartFlow(); break;
+    case 'close-start-flow': closeStartFlow(); break;
+    case 'choose-start': chooseStartKind(arg); break;
+    case 'create-roll': createRollFromDraft(); break;
+    case 'pick-roll-delay': setDraftRollDelay(parseInt(arg,10)); break;
+    case 'start-next': startFlowNext(arg); break;
+    case 'start-back': startFlowBack(arg); break;
+    case 'pick-guests': pickGuestCount(parseInt(arg,10)); break;
+    case 'pick-develop': setDevelopMode(arg); break;
+    case 'create-event': createEvent(); break;
+    case 'open-roster': openRoster(arg); break;
+    case 'close-roster': closeRoster(); break;
+    case 'roster-open-you': rosterOpenYou(arg); break;
+    case 'open-roll': openRoll(arg); break;
+    case 'switch-roll': switchRoll(arg === 'all' ? null : arg); break;
+    case 'gallery-back': backToCameraHome(); break;
+    case 'photo-tap': openSingle(arg); break;
+    case 'toggle-print': togglePrint(arg); break;
+    case 'single-back': backToGallery(); break;
+    case 'single-nav': openSingle(arg); break;
+    case 'ceremony-open': openCeremonyRoll(); break;
+    case 'ceremony-later': dismissCeremony(); break;
+    case 'tab': switchTab(arg); break;
+    case 'finish': changeFinish(arg); break;
+    case 'empty-slot': goToGalleryFromTray(); break;
+    case 'confirm-remove-tray': requestConfirm('remove-tray', arg); break;
+    case 'start-order': startOrder(); break;
+    case 'close-order-flow': closeOrderFlow(); break;
+    case 'order-back': orderBack(arg); break;
+    case 'choose-fulfillment': chooseFulfillment(arg); break;
+    case 'choose-location': choosePickupLocation(arg.replace('_',' ')); break;
+    case 'pay-method': changePayMethod(arg); break;
+    case 'confirm-payment': confirmPayment(); break;
+    case 'order-done': orderDone(); break;
+    case 'view-order': viewOrder(arg); break;
+    case 'close-order-popup': closeOrderPopup(); break;
+    case 'confirm-pickup': requestConfirm('pickup', arg); break;
+    case 'confirm-cancel': cancelConfirm(); break;
+    case 'confirm-do': confirmActionDo(); break;
+    default: break;
+  }
+});
+
+// A couple of tap targets (the roster link, the "Picked up" pill) live nested
+// inside a larger card that's already a <button>, so they can't themselves be
+// real <button> elements without invalid nested-button markup. They're marked
+// role="button" tabindex="0" instead — this teaches them the Enter/Space
+// activation a native button gets for free.
+document.getElementById('screen').addEventListener('keydown', function(e){
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var el = e.target.closest('[data-act]');
+  if (!el || el.tagName === 'BUTTON' || el.tagName === 'INPUT' || el.tagName === 'A') return;
+  e.preventDefault();
+  el.click();
+});
+
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+/* ───────────────────────── responsive scale ───────────────────────── */
+function fitDevice(){
+  var wrap = document.getElementById('deviceWrap');
+  var device = document.getElementById('device');
+  var availW = window.innerWidth - 40;
+  var availH = window.innerHeight - 220;
+  var scale = Math.min(1, availW / 393, availH / 852);
+  scale = Math.max(scale, 0.42);
+  device.style.transform = 'scale(' + scale + ')';
+  device.style.transformOrigin = 'top center';
+  wrap.style.height = (852 * scale) + 'px';
+  wrap.style.width = (393 * scale) + 'px';
+}
+window.addEventListener('resize', fitDevice);
+
+/* ───────────────────────── boot ───────────────────────── */
+function boot(){
+  document.getElementById('screen').innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;letter-spacing:.14em">LOADING…</div>';
+  fitDevice();
+  dbGetAll().then(function(images){
+    PHOTOS = images;
+    var restored = loadState();
+    if (restored) state = restored;
+    lastRoute = null;
+    render();
+    if (state.cameraView === 'full'){
+      var roll = activeRoll();
+      var canShoot = !!roll && roll.status !== 'full' && !eventHasEnded(roll);
+      if (canShoot) startCameraStream();
+    }
+    tickTimer = setInterval(function(){ state.now = Date.now(); render(); }, 30000);
+  });
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
